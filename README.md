@@ -140,3 +140,148 @@ function base32ToBytes(base32) {
   }
   return output;
 }
+```
+
+### 第三步：编写前端界面 (Index.html)
+点击左侧的文件列表旁边的 “+” 号，选择 “HTML”，命名为 Index。粘贴以下代码：
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; background-color: #f5f5f5; color: #333; max-width: 400px; margin: 0 auto; padding: 20px; }
+      h2 { text-align: center; color: #4285f4; }
+      
+      /* 卡片样式 */
+      .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+      .account-name { font-size: 14px; color: #666; font-weight: 500; }
+      .otp-code { font-size: 24px; font-family: monospace; color: #4285f4; font-weight: bold; letter-spacing: 2px; }
+      .delete-btn { color: #ff4444; cursor: pointer; font-size: 18px; margin-left: 10px; border: none; background: none; }
+      
+      /* 输入区域 */
+      .input-group { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+      input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+      button { width: 100%; padding: 10px; background-color: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+      button:hover { background-color: #357abd; }
+      
+      /* 进度条 */
+      .progress-bar { height: 4px; background-color: #e0e0e0; margin-bottom: 20px; border-radius: 2px; overflow: hidden; }
+      .progress-fill { height: 100%; background-color: #4285f4; width: 100%; transition: width 1s linear; }
+      
+      .loader { text-align: center; margin-top: 20px; color: #888; }
+    </style>
+  </head>
+  <body>
+    <h2>Web Authenticator</h2>
+    
+    <div class="progress-bar">
+      <div id="progress" class="progress-fill"></div>
+    </div>
+
+    <div id="code-list">
+      <div class="loader">正在加载验证码...</div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+
+    <div class="input-group">
+      <h3>添加新账号</h3>
+      <input type="text" id="new-name" placeholder="账号名称 (如: Google, Github)">
+      <input type="text" id="new-secret" placeholder="密钥 (Base32 Key, 如: JBSWY...)" autocomplete="off">
+      <button onclick="addAccount()">添加</button>
+    </div>
+
+    <script>
+      // 页面加载后立即获取
+      window.onload = function() {
+        refreshCodes();
+        startTimer();
+      };
+
+      // 定时刷新逻辑
+      function startTimer() {
+        setInterval(() => {
+          const epoch = Math.floor(Date.now() / 1000);
+          const seconds = epoch % 30;
+          const remaining = 30 - seconds;
+          
+          // 更新进度条
+          const percentage = (remaining / 30) * 100;
+          document.getElementById('progress').style.width = percentage + '%';
+
+          // 刚好过30秒时刷新数据 (或者当剩余时间为29秒时，给一点缓冲)
+          if (remaining === 30 || remaining === 0) {
+            refreshCodes();
+          }
+        }, 1000);
+      }
+
+      // 从后端获取数据
+      function refreshCodes() {
+        google.script.run.withSuccessHandler(renderCodes).getCodes();
+      }
+
+      // 渲染列表
+      function renderCodes(data) {
+        const container = document.getElementById('code-list');
+        if (data.length === 0) {
+          container.innerHTML = '<div class="loader">暂无账号，请在下方添加。</div>';
+          return;
+        }
+
+        let html = '';
+        data.forEach(item => {
+          // 格式化 123456 -> 123 456
+          const formatted = item.code.slice(0,3) + ' ' + item.code.slice(3);
+          html += `
+            <div class="card">
+              <div>
+                <div class="account-name">${item.name}</div>
+                <div class="otp-code">${formatted}</div>
+              </div>
+              <button class="delete-btn" onclick="deleteAccount('${item.name}')">&times;</button>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      }
+
+      // 添加账号
+      function addAccount() {
+        const name = document.getElementById('new-name').value;
+        const secret = document.getElementById('new-secret').value;
+        
+        if(!name || !secret) {
+          alert("请填写名称和密钥");
+          return;
+        }
+
+        const btn = document.querySelector('button');
+        btn.textContent = '添加中...';
+        btn.disabled = true;
+
+        google.script.run.withSuccessHandler(() => {
+          document.getElementById('new-name').value = '';
+          document.getElementById('new-secret').value = '';
+          btn.textContent = '添加';
+          btn.disabled = false;
+          refreshCodes();
+        }).withFailureHandler((e) => {
+          alert("错误: " + e.message);
+          btn.textContent = '添加';
+          btn.disabled = false;
+        }).addAccount(name, secret);
+      }
+
+      // 删除账号
+      function deleteAccount(name) {
+        if(confirm('确定要删除 ' + name + ' 吗?')) {
+          google.script.run.withSuccessHandler(refreshCodes).deleteAccount(name);
+        }
+      }
+    </script>
+  </body>
+</html>
+```
