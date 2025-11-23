@@ -58,7 +58,7 @@ function generateTOTP(secret) {
   const timeStep = 30;
   let time = Math.floor(epoch / timeStep);
 
-  // 2. 将时间转换为 8 字节的大端序 buffer (修复版)
+  // 2. 将时间转换为 8 字节的大端序 buffer
   const msg = [];
   for (let i = 7; i >= 0; i--) {
     msg[i] = time & 0xFF;
@@ -68,10 +68,14 @@ function generateTOTP(secret) {
   // 3. Base32 解码密钥
   const key = base32ToBytes(secret);
 
-  // 4. HMAC-SHA1 计算
-  const hash = Utilities.computeHmacSha1Signature(msg, key);
+  // 4. 将数组转换为字符串再转为字节（确保正确的类型）
+  const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
+  const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
 
-  // 5. 动态截断 (Dynamic Truncation)
+  // 5. HMAC-SHA1 计算
+  const hash = Utilities.computeHmacSha1Signature(msgString, keyString);
+
+  // 6. 动态截断 (Dynamic Truncation)
   const offset = hash[hash.length - 1] & 0xf;
   const binary =
       ((hash[offset] & 0x7f) << 24) |
@@ -79,7 +83,7 @@ function generateTOTP(secret) {
       ((hash[offset + 2] & 0xff) << 8) |
       (hash[offset + 3] & 0xff);
 
-  // 6. 生成 6 位数字
+  // 7. 生成 6 位数字
   let otp = binary % 1000000;
 
   // 补零
