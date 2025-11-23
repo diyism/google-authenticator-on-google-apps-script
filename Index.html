@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; background-color: #f5f5f5; color: #333; max-width: 400px; margin: 0 auto; padding: 20px; }
+      h2 { text-align: center; color: #4285f4; }
+
+      /* 卡片样式 */
+      .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+      .card-content { flex: 1; min-width: 0; }
+      .account-name { font-size: 14px; color: #666; font-weight: 500; }
+      .otp-code { font-size: 24px; font-family: monospace; color: #4285f4; font-weight: bold; letter-spacing: 2px; }
+      .delete-btn { color: #ff4444; cursor: pointer; font-size: 24px; width: 30px; height: 30px; padding: 0; margin-left: 10px; border: none; background: none; flex-shrink: 0; }
+
+      /* 输入区域 */
+      .input-group { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+      input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+      button { width: 100%; padding: 10px; background-color: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+      button:hover { background-color: #357abd; }
+
+      /* 进度条 */
+      .progress-bar { height: 4px; background-color: #e0e0e0; margin-bottom: 20px; border-radius: 2px; overflow: hidden; }
+      .progress-fill { height: 100%; background-color: #4285f4; width: 100%; transition: width 1s linear; }
+
+      .loader { text-align: center; margin-top: 20px; color: #888; }
+      .error-msg { background: #ffebee; color: #c62828; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <h2>🔐 Web Authenticator</h2>
+
+    <div class="progress-bar">
+      <div id="progress" class="progress-fill"></div>
+    </div>
+
+    <div id="code-list">
+      <div class="loader">正在加载验证码...</div>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+
+    <div class="input-group">
+      <h3>添加新账号</h3>
+      <input type="text" id="new-name" placeholder="账号名称 (如: Google, Github)">
+      <input type="text" id="new-secret" placeholder="密钥 (Base32 Key, 如: JBSWY...)" autocomplete="off">
+      <button onclick="addAccount()">添加</button>
+    </div>
+
+    <script>
+      let isRefreshing = false;  // 防止并发请求
+      let lastRefreshTime = 0;   // 记录上次请求时间
+      const MIN_REFRESH_INTERVAL = 25000; // 最小请求间隔 25秒
+
+      // 页面加载后立即获取
+      window.onload = function() {
+        refreshCodes();
+        startTimer();
+      };
+
+      // 定时刷新逻辑
+      function startTimer() {
+        setInterval(() => {
+          const epoch = Math.floor(Date.now() / 1000);
+          const seconds = epoch % 30;
+          const remaining = 30 - seconds;
+
+          // 更新进度条
+          const percentage = (remaining / 30) * 100;
+          document.getElementById('progress').style.width = percentage + '%';
+
+          // 只在剩余1秒时刷新（避免在边界重复触发）
+          if (remaining === 1) {
+            refreshCodes();
+          }
+        }, 1000);
+      }
+
+      // 从后端获取数据（带防抖和错误处理）
+      function refreshCodes(force = false) {
+        const now = Date.now();
+
+        // 防止并发请求
+        if (isRefreshing) {
+          console.log('请求进行中，跳过本次刷新');
+          return;
+        }
+
+        // 防止请求过于频繁（除非强制刷新）
+        if (!force && now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+          console.log('请求过于频繁，跳过本次刷新');
+          return;
+        }
+
+        isRefreshing = true;
+        lastRefreshTime = now;
+
+        google.script.run
+          .withSuccessHandler(function(data) {
+            renderCodes(data);
+            isRefreshing = false;
+          })
+          .withFailureHandler(function(error) {
+            console.error('获取验证码失败:', error);
+            isRefreshing = false;
+
+            // 如果是 429 错误，延长下次请求时间
+            if (error.message && error.message.includes('429')) {
+              lastRefreshTime = Date.now();
+              console.log('检测到频率限制，将延迟下次请求');
+            }
+
+            // 显示错误信息
+            showError('无法获取验证码: ' + error.message);
+          })
+          .getCodes();
+      }
+
+      // 渲染列表
+      function renderCodes(data) {
+        const container = document.getElementById('code-list');
+        if (data.length === 0) {
+          container.innerHTML = '<div class="loader">暂无账号，请在下方添加。</div>';
+          return;
+        }
+
+        let html = '';
+        data.forEach(item => {
+          if (item.code === "Error") {
+            // 显示错误的账号
+            html += `
+              <div class="card" style="border-left: 3px solid #ff4444;">
+                <div class="card-content">
+                  <div class="account-name">${item.name}</div>
+                  <div style="color: #ff4444; font-size: 14px;">密钥错误或格式不正确</div>
+                </div>
+                <button class="delete-btn" onclick="deleteAccount('${item.name}')">&times;</button>
+              </div>
+            `;
+          } else {
+            // 格式化 123456 -> 123 456
+            const formatted = item.code.slice(0,3) + ' ' + item.code.slice(3);
+            html += `
+              <div class="card">
+                <div class="card-content">
+                  <div class="account-name">${item.name}</div>
+                  <div class="otp-code">${formatted}</div>
+                </div>
+                <button class="delete-btn" onclick="deleteAccount('${item.name}')">&times;</button>
+              </div>
+            `;
+          }
+        });
+        container.innerHTML = html;
+      }
+
+      // 显示错误信息
+      function showError(message) {
+        const container = document.getElementById('code-list');
+        container.innerHTML = '<div class="error-msg">' + message + '</div>' + container.innerHTML;
+      }
+
+      // 添加账号
+      function addAccount() {
+        const name = document.getElementById('new-name').value.trim();
+        const secret = document.getElementById('new-secret').value.trim();
+
+        if(!name || !secret) {
+          alert("请填写名称和密钥");
+          return;
+        }
+
+        const btn = document.querySelector('button');
+        btn.textContent = '添加中...';
+        btn.disabled = true;
+
+        google.script.run
+          .withSuccessHandler(() => {
+            document.getElementById('new-name').value = '';
+            document.getElementById('new-secret').value = '';
+            btn.textContent = '添加';
+            btn.disabled = false;
+            refreshCodes(true);  // 强制刷新
+          })
+          .withFailureHandler((e) => {
+            alert("错误: " + e.message);
+            btn.textContent = '添加';
+            btn.disabled = false;
+          })
+          .addAccount(name, secret);
+      }
+
+      // 删除账号
+      function deleteAccount(name) {
+        if(confirm('确定要删除 ' + name + ' 吗?')) {
+          google.script.run
+            .withSuccessHandler(() => refreshCodes(true))  // 强制刷新
+            .withFailureHandler((e) => {
+              alert("删除失败: " + e.message);
+            })
+            .deleteAccount(name);
+        }
+      }
+    </script>
+  </body>
+</html>
