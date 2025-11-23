@@ -68,12 +68,12 @@ function generateTOTP(secret) {
   // 3. Base32 解码密钥
   const key = base32ToBytes(secret);
 
-  // 4. 将数组转换为字符串再转为字节（确保正确的类型）
+  // 4. 将数组转换为字符串（确保正确的类型）
   const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
   const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
 
-  // 5. HMAC-SHA1 计算
-  const hash = Utilities.computeHmacSha1Signature(msgString, keyString);
+  // 5. HMAC-SHA1 计算（使用正确的 API）
+  const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msgString, keyString);
 
   // 6. 动态截断 (Dynamic Truncation)
   const offset = hash[hash.length - 1] & 0xf;

@@ -47,27 +47,36 @@ for (let i = 7; i >= 0; i--) {
 }
 ```
 
-**原因 2：HMAC 函数参数类型错误**
+**原因 2：HMAC 函数名称错误**
 
 错误信息：`TypeError: Utilities.computeHmacSha1Signature is not a function`
 
-实际上是因为参数类型不正确。`Utilities.computeHmacSha1Signature()` 在 Google Apps Script 中需要接收字符串或字节数组，但直接传递 JavaScript 普通数组会导致错误。
+**根本原因**：Google Apps Script 中**不存在** `computeHmacSha1Signature()` 这个函数！
+
+正确的函数名是 `computeHmacSignature(algorithm, value, key)`，需要指定算法类型。
 
 ```javascript
-// ❌ 错误的代码
-const hash = Utilities.computeHmacSha1Signature(msg, key);  // msg 和 key 是普通数组
+// ❌ 错误的代码 - 这个函数不存在！
+const hash = Utilities.computeHmacSha1Signature(msg, key);
 ```
 
 **修复方案**：
 
-将字节数组转换为字符串：
+使用正确的 API 函数名和参数顺序：
 
 ```javascript
 // ✅ 正确的代码
 const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
 const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
-const hash = Utilities.computeHmacSha1Signature(msgString, keyString);
+// 注意：参数顺序是 (algorithm, value, key)
+const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msgString, keyString);
 ```
+
+**Google Apps Script HMAC API 说明**：
+- 函数名：`Utilities.computeHmacSignature(algorithm, value, key)`
+- 第一个参数必须是算法枚举值：`Utilities.MacAlgorithm.HMAC_SHA_1`
+- 参数可以是字符串或字节数组
+- 返回值是字节数组
 
 ## 主要改进
 
