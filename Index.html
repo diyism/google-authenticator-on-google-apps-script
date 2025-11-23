@@ -8,9 +8,10 @@
 
       /* 卡片样式 */
       .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+      .card-content { flex: 1; min-width: 0; }
       .account-name { font-size: 14px; color: #666; font-weight: 500; }
       .otp-code { font-size: 24px; font-family: monospace; color: #4285f4; font-weight: bold; letter-spacing: 2px; }
-      .delete-btn { color: #ff4444; cursor: pointer; font-size: 18px; margin-left: 10px; border: none; background: none; }
+      .delete-btn { color: #ff4444; cursor: pointer; font-size: 24px; width: 30px; height: 30px; padding: 0; margin-left: 10px; border: none; background: none; flex-shrink: 0; }
 
       /* 输入区域 */
       .input-group { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -76,7 +77,7 @@
       }
 
       // 从后端获取数据（带防抖和错误处理）
-      function refreshCodes() {
+      function refreshCodes(force = false) {
         const now = Date.now();
 
         // 防止并发请求
@@ -85,8 +86,8 @@
           return;
         }
 
-        // 防止请求过于频繁
-        if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+        // 防止请求过于频繁（除非强制刷新）
+        if (!force && now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
           console.log('请求过于频繁，跳过本次刷新');
           return;
         }
@@ -129,7 +130,7 @@
             // 显示错误的账号
             html += `
               <div class="card" style="border-left: 3px solid #ff4444;">
-                <div>
+                <div class="card-content">
                   <div class="account-name">${item.name}</div>
                   <div style="color: #ff4444; font-size: 14px;">密钥错误或格式不正确</div>
                 </div>
@@ -141,7 +142,7 @@
             const formatted = item.code.slice(0,3) + ' ' + item.code.slice(3);
             html += `
               <div class="card">
-                <div>
+                <div class="card-content">
                   <div class="account-name">${item.name}</div>
                   <div class="otp-code">${formatted}</div>
                 </div>
@@ -179,7 +180,7 @@
             document.getElementById('new-secret').value = '';
             btn.textContent = '添加';
             btn.disabled = false;
-            refreshCodes();
+            refreshCodes(true);  // 强制刷新
           })
           .withFailureHandler((e) => {
             alert("错误: " + e.message);
@@ -193,7 +194,7 @@
       function deleteAccount(name) {
         if(confirm('确定要删除 ' + name + ' 吗?')) {
           google.script.run
-            .withSuccessHandler(refreshCodes)
+            .withSuccessHandler(() => refreshCodes(true))  // 强制刷新
             .withFailureHandler((e) => {
               alert("删除失败: " + e.message);
             })
