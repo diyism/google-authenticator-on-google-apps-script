@@ -68,22 +68,22 @@ function generateTOTP(secret) {
   // 3. Base32 解码密钥
   const key = base32ToBytes(secret);
 
-  // 4. 将数组转换为字符串（确保正确的类型）
-  const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
-  const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
+  // 4. HMAC-SHA1 计算（直接使用字节数组，Google Apps Script 从2018年起支持）
+  const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msg, key);
 
-  // 5. HMAC-SHA1 计算（使用正确的 API）
-  const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msgString, keyString);
+  // 5. 动态截断 (Dynamic Truncation)
+  // 注意：Google Apps Script 返回的是有符号字节数组（-128到127）
+  // 需要转换为无符号（0到255）
+  const offset = (hash[hash.length - 1] & 0xff) & 0xf;
 
-  // 6. 动态截断 (Dynamic Truncation)
-  const offset = hash[hash.length - 1] & 0xf;
+  // 将4个字节组合成32位整数，确保最高位为0（& 0x7f）
   const binary =
-      ((hash[offset] & 0x7f) << 24) |
+      (((hash[offset] & 0xff) & 0x7f) << 24) |
       ((hash[offset + 1] & 0xff) << 16) |
       ((hash[offset + 2] & 0xff) << 8) |
       (hash[offset + 3] & 0xff);
 
-  // 7. 生成 6 位数字
+  // 6. 生成 6 位数字
   let otp = binary % 1000000;
 
   // 补零

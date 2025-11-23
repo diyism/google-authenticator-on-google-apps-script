@@ -55,28 +55,55 @@ for (let i = 7; i >= 0; i--) {
 
 正确的函数名是 `computeHmacSignature(algorithm, value, key)`，需要指定算法类型。
 
+**原因 3：字节数组编码错误（导致验证码无法验证）**
+
+即使生成了6位数字验证码，但验证不通过的根本原因是：**使用 `String.fromCharCode()` 将字节数组转换为字符串时出错**。
+
 ```javascript
-// ❌ 错误的代码 - 这个函数不存在！
-const hash = Utilities.computeHmacSha1Signature(msg, key);
+// ❌ 错误的做法
+const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
+const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
+const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msgString, keyString);
 ```
+
+**问题**：
+- `String.fromCharCode()` 对于大于127的字节会产生 Unicode 字符（UTF-16）
+- 这会导致 HMAC 计算完全错误
+- 生成的验证码看起来是6位数字，但与预期值不符
 
 **修复方案**：
 
-使用正确的 API 函数名和参数顺序：
+Google Apps Script 从 **2018年6月19日** 起支持直接使用字节数组，无需转换为字符串：
 
 ```javascript
-// ✅ 正确的代码
-const msgString = msg.map(function(b) { return String.fromCharCode(b); }).join('');
-const keyString = key.map(function(b) { return String.fromCharCode(b); }).join('');
-// 注意：参数顺序是 (algorithm, value, key)
-const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msgString, keyString);
+// ✅ 正确的代码 - 直接使用字节数组
+const hash = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msg, key);
+```
+
+**原因 4：有符号字节数组处理错误**
+
+Google Apps Script 返回的字节数组是**有符号的**（-128 到 127），而 TOTP 算法需要无符号字节（0 到 255）。
+
+```javascript
+// ❌ 错误 - 没有处理有符号字节
+const offset = hash[hash.length - 1] & 0xf;
+
+// ✅ 正确 - 先转换为无符号
+const offset = (hash[hash.length - 1] & 0xff) & 0xf;
+
+// 所有字节都需要 & 0xff 来转换为无符号
+const binary =
+    (((hash[offset] & 0xff) & 0x7f) << 24) |
+    ((hash[offset + 1] & 0xff) << 16) |
+    ((hash[offset + 2] & 0xff) << 8) |
+    (hash[offset + 3] & 0xff);
 ```
 
 **Google Apps Script HMAC API 说明**：
 - 函数名：`Utilities.computeHmacSignature(algorithm, value, key)`
 - 第一个参数必须是算法枚举值：`Utilities.MacAlgorithm.HMAC_SHA_1`
-- 参数可以是字符串或字节数组
-- 返回值是字节数组
+- 参数可以是字符串或**字节数组**（推荐直接使用字节数组）
+- 返回值是**有符号**字节数组（-128 到 127）
 
 ## 主要改进
 
